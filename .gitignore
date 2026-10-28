@@ -10,3 +10,4 @@ session.json
 *.xls
 *.xlsx
 !internal/schedule/testdata/*.xls
+!/example/*.xls
