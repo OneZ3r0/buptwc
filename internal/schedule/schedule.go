@@ -45,7 +45,7 @@ type Occurrence struct {
 type Window struct{ Start, End time.Time }
 
 func Expand(courses []Course, c config.Config) ([]Occurrence, error) {
-	if err := c.Validate(); err != nil {
+	if err := c.ValidateSchedule(); err != nil {
 		return nil, err
 	}
 	if err := Validate(courses, c); err != nil {

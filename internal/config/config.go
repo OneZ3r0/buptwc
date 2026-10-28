@@ -102,7 +102,7 @@ func Decode(r io.Reader) (Config, error) {
 	if err := toml.NewDecoder(r).DisallowUnknownFields().Decode(&c); err != nil {
 		return c, fmt.Errorf("配置格式错误: %w", err)
 	}
-	return c, c.Validate()
+	return c, nil
 }
 
 func Load(path string) (Config, error) {
@@ -112,13 +112,13 @@ func Load(path string) (Config, error) {
 	}
 	defer f.Close()
 	c, err := Decode(f)
-	if err == nil && !filepath.IsAbs(c.StateDir) {
+	if err == nil && c.StateDir != "" && !filepath.IsAbs(c.StateDir) {
 		c.StateDir = filepath.Join(filepath.Dir(path), c.StateDir)
 	}
 	return c, err
 }
 
-func (c Config) Validate() error {
+func (c Config) ValidateSchedule() error {
 	loc, err := time.LoadLocation(c.Timezone)
 	if err != nil {
 		return fmt.Errorf("无效时区: %w", err)
@@ -129,9 +129,6 @@ func (c Config) Validate() error {
 	}
 	if c.Semester.Weeks < 1 || c.Semester.Weeks > 60 {
 		return fmt.Errorf("semester.weeks 必须在 1..60 之间")
-	}
-	if c.StateDir == "" {
-		return fmt.Errorf("state_dir 不能为空")
 	}
 	if len(c.Periods) == 0 || len(c.Periods) > 24 {
 		return fmt.Errorf("请配置 1..24 个节次")
@@ -150,12 +147,6 @@ func (c Config) Validate() error {
 	}
 	if c.Window.Before < 0 || c.Window.After < 0 || c.Window.Before.Value() > 24*time.Hour || c.Window.After.Value() > 24*time.Hour {
 		return fmt.Errorf("窗口偏移必须在 0..24h 之间")
-	}
-	if c.Poll.Interval.Value() < time.Second || c.Poll.Timeout <= 0 || c.Poll.BackoffMax < c.Poll.Interval || c.Poll.PageSize < 1 || c.Poll.PageSize > 1000 || c.Poll.MaxPages < 1 || c.Poll.MaxPages > 10000 {
-		return fmt.Errorf("无效的 poll 间隔、超时、退避或分页配置")
-	}
-	if c.Notify.TTL <= 0 || c.Notify.Timeout <= 0 || c.Notify.MaxAttempts < 1 || c.Notify.MaxAttempts > 100 || c.Notify.RetryBase <= 0 || c.Notify.RetryMax < c.Notify.RetryBase || c.Notify.WebhookEnv == "" {
-		return fmt.Errorf("无效的 notify 有效期、重试或超时配置")
 	}
 	for i, a := range c.Adjustments {
 		if _, err := time.ParseInLocation("2006-01-02", a.Date, loc); err != nil {
@@ -176,6 +167,27 @@ func (c Config) Validate() error {
 			if a.StartPeriod < 1 || a.EndPeriod < a.StartPeriod || a.EndPeriod > len(c.Periods) {
 				return fmt.Errorf("adjustments[%d]: 无效节次", i)
 			}
+		}
+	}
+	return nil
+}
+
+func (c Config) ValidatePoll() error {
+	if c.Poll.Interval.Value() < time.Second || c.Poll.Timeout <= 0 || c.Poll.BackoffMax < c.Poll.Interval || c.Poll.PageSize < 1 || c.Poll.PageSize > 1000 || c.Poll.MaxPages < 1 || c.Poll.MaxPages > 10000 {
+		return fmt.Errorf("无效的 poll 间隔、超时、退避或分页配置")
+	}
+	return nil
+}
+func (c Config) ValidateNotify() error {
+	if c.Notify.TTL <= 0 || c.Notify.Timeout <= 0 || c.Notify.MaxAttempts < 1 || c.Notify.MaxAttempts > 100 || c.Notify.RetryBase <= 0 || c.Notify.RetryMax < c.Notify.RetryBase || c.Notify.WebhookEnv == "" {
+		return fmt.Errorf("无效的 notify 有效期、重试或超时配置")
+	}
+	return nil
+}
+func (c Config) Validate() error {
+	for _, check := range []func() error{c.ValidateSchedule, c.ValidatePoll, c.ValidateNotify} {
+		if err := check(); err != nil {
+			return err
 		}
 	}
 	return nil
