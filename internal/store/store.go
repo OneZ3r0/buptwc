@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/url"
 	"os"
@@ -14,6 +15,8 @@ import (
 	"github.com/OneZ3r0/buptwc/internal/state"
 	_ "modernc.org/sqlite"
 )
+
+var ErrNoCourses = errors.New("尚未导入课表，请运行 buptwc import <file.xls>")
 
 type Store struct{ db *sql.DB }
 
@@ -63,6 +66,9 @@ func (s *Store) init() error {
 	if err := s.db.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
 		return err
 	}
+	if version == 1 {
+		return nil
+	}
 	if version > 1 {
 		return fmt.Errorf("数据库版本 %d 高于当前程序支持版本", version)
 	}
@@ -106,7 +112,7 @@ func (s *Store) Courses(ctx context.Context) ([]schedule.Course, error) {
 	var data string
 	if err := s.db.QueryRowContext(ctx, "SELECT courses FROM timetable WHERE id=1").Scan(&data); err != nil {
 		if err == sql.ErrNoRows {
-			return nil, fmt.Errorf("尚未导入课表，请运行 buptwc import <file.xls>")
+			return nil, ErrNoCourses
 		}
 		return nil, err
 	}
@@ -184,11 +190,14 @@ type Job struct {
 	Attempts  int
 }
 
-func (s *Store) Due(ctx context.Context, account string, now time.Time) ([]Job, error) {
+func (s *Store) Due(ctx context.Context, account string, now time.Time, limit int) ([]Job, error) {
+	if limit < 1 {
+		return nil, fmt.Errorf("任务批量上限必须为正")
+	}
 	if _, err := s.db.ExecContext(ctx, "UPDATE outbox SET state='expired' WHERE account_id=? AND state='pending' AND expires_at<=?", account, now.UnixMilli()); err != nil {
 		return nil, err
 	}
-	rows, err := s.db.QueryContext(ctx, "SELECT id,message,expires_at,attempts FROM outbox WHERE account_id=? AND state='pending' AND next_attempt<=? ORDER BY next_attempt,id LIMIT 100", account, now.UnixMilli())
+	rows, err := s.db.QueryContext(ctx, "SELECT id,message,expires_at,attempts FROM outbox WHERE account_id=? AND state='pending' AND next_attempt<=? ORDER BY next_attempt,id LIMIT ?", account, now.UnixMilli(), limit)
 	if err != nil {
 		return nil, err
 	}

@@ -12,76 +12,86 @@ mode = "course" # course：整段课程；period：每小节分别建立窗口
 before = "10m"
 after = "5m"
 
-[poll]
-interval = "10s"
-page_size = 10
-max_pages = 100
-timeout = "15s"
-backoff_max = "5m"
+# 高级配置：以下均有默认值，需要覆盖时再取消对应配置节的注释。
+# [poll]
+# interval = "10s"
+# page_size = 10
+# max_pages = 100
+# timeout = "15s"
+# backoff_max = "5m"
 
-[ucloud]
-# 默认使用登录响应 user_id。请用 check 核对，必要时明确填写收件人 ID。
-account_id = ""
-identity = "JS005:undefined"
-tenant_id = "000000"
+# [ucloud]
+# # 默认使用登录响应 user_id。请用 check 核对，必要时明确填写收件人 ID。
+# account_id = ""
+# identity = "JS005:undefined"
+# tenant_id = "000000"
 
-[notify]
-# 只保存环境变量名称，Webhook 密钥不要写进本文件。
-webhook_env = "BUPTWC_WEBHOOK"
-ttl = "30m"
-max_attempts = 6
-retry_base = "5s"
-retry_max = "5m"
-timeout = "10s"
+# [notify]
+# # 只保存环境变量名称，Webhook 密钥不要写进本文件。
+# webhook_env = "BUPTWC_WEBHOOK"
+# ttl = "30m"
+# max_attempts = 6
+# retry_base = "5s"
+# retry_max = "5m"
+# timeout = "10s"
 
+# 以下节次时间仅作示例；请按实际课表核对。
 [[periods]]
 number = 1
 start = "08:00"
-end = "08:50"
+end = "08:45"
 [[periods]]
 number = 2
-start = "09:00"
-end = "09:50"
+start = "08:50"
+end = "09:35"
 [[periods]]
 number = 3
-start = "10:10"
-end = "11:00"
+start = "09:50"
+end = "10:35"
 [[periods]]
 number = 4
-start = "11:10"
-end = "12:00"
+start = "10:40"
+end = "11:25"
 [[periods]]
 number = 5
-start = "13:00"
-end = "13:50"
+start = "11:30"
+end = "12:15"
 [[periods]]
 number = 6
-start = "14:00"
-end = "14:50"
+start = "13:00"
+end = "13:45"
 [[periods]]
 number = 7
-start = "15:10"
-end = "16:00"
+start = "13:50"
+end = "14:35"
 [[periods]]
 number = 8
-start = "16:10"
-end = "17:00"
+start = "14:45"
+end = "15:30"
 [[periods]]
 number = 9
-start = "17:10"
-end = "18:00"
+start = "15:40"
+end = "16:25"
 [[periods]]
 number = 10
-start = "18:30"
-end = "19:20"
+start = "16:35"
+end = "17:20"
 [[periods]]
 number = 11
-start = "19:30"
-end = "20:20"
+start = "17:25"
+end = "18:10"
 [[periods]]
 number = 12
-start = "20:30"
-end = "21:20"
+start = "18:30"
+end = "19:15"
+[[periods]]
+number = 13
+start = "19:20"
+end = "20:05"
+[[periods]]
+number = 14
+start = "20:10"
+end = "20:55"
 
 # 停课：course 留空表示当天全部课程；节次留空表示匹配课程的全部排课。
 # [[adjustments]]

@@ -32,11 +32,17 @@ type Runner struct {
 	Log     *slog.Logger
 }
 
-func (r *Runner) Poll(ctx context.Context, now time.Time) (store.ScanResult, error) {
-	notifications, err := r.Scanner.Scan(ctx)
+func (r *Runner) Poll(ctx context.Context) (store.ScanResult, error) {
+	scanCtx, cancel := context.WithTimeout(ctx, r.Config.Poll.Timeout.Value())
+	defer cancel()
+	notifications, err := r.Scanner.Scan(scanCtx)
 	if err != nil {
 		return store.ScanResult{}, err
 	}
+	if err := scanCtx.Err(); err != nil {
+		return store.ScanResult{}, err
+	}
+	now := time.Now()
 	loc, err := time.LoadLocation(r.Config.Timezone)
 	if err != nil {
 		return store.ScanResult{}, err
@@ -55,18 +61,19 @@ func (r *Runner) Poll(ctx context.Context, now time.Time) (store.ScanResult, err
 }
 
 // Dispatch is independent of course windows and authentication availability.
-func (r *Runner) Dispatch(ctx context.Context, now time.Time) error {
-	jobs, err := r.Store.Due(ctx, r.Account, now)
+func (r *Runner) Dispatch(ctx context.Context) error {
+	const batchSize = 10
+	deadline := time.Now().Add(r.Config.Notify.Timeout.Value())
+	jobs, err := r.Store.Due(ctx, r.Account, time.Now(), batchSize)
 	if err != nil {
 		return err
-	}
-	// Bound one batch so notification retries do not starve platform polling.
-	if len(jobs) > 10 {
-		jobs = jobs[:10]
 	}
 	for _, j := range jobs {
 		if err := ctx.Err(); err != nil {
 			return err
+		}
+		if !time.Now().Before(deadline) {
+			break
 		}
 		if !j.ExpiresAt.After(time.Now()) {
 			if err := r.Store.Finish(ctx, j.ID, "expired", j.Attempts, time.Time{}, ""); err != nil {
@@ -81,7 +88,11 @@ func (r *Runner) Dispatch(ctx context.Context, now time.Time) error {
 			}
 			continue
 		}
-		sendCtx, cancel := context.WithDeadline(ctx, j.ExpiresAt)
+		sendBy := j.ExpiresAt
+		if deadline.Before(sendBy) {
+			sendBy = deadline
+		}
+		sendCtx, cancel := context.WithDeadline(ctx, sendBy)
 		err := r.Sender.Send(sendCtx, j.Message)
 		cancel()
 		if ctx.Err() != nil {
@@ -123,14 +134,14 @@ func (r *Runner) Run(ctx context.Context) error {
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
-		if err := r.Dispatch(ctx, time.Now()); err != nil {
+		if err := r.Dispatch(ctx); err != nil {
 			return err
 		}
 		now := time.Now()
 		w, hasWindow := schedule.Next(r.Windows, now)
 		active := hasWindow && !now.Before(w.Start)
 		if !authFailed && active && !now.Before(nextPoll) {
-			result, err := r.Poll(ctx, now)
+			result, err := r.Poll(ctx)
 			if ctx.Err() != nil {
 				return ctx.Err()
 			}
