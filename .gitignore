@@ -1,0 +1,15 @@
+/buptwc
+/bin/
+/config.toml
+/state/
+/secrets.env
+*.db
+*.db-shm
+*.db-wal
+session.json
+*.xls
+*.xlsx
+!internal/schedule/testdata/*.xls
+!/example/timetable.xls
+/docs/
+/README.md

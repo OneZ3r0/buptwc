@@ -1,0 +1,20 @@
+# 用户级服务。先完成配置、登录、导入和 notify test，再手动启用。
+[Unit]
+Description=BUPT uCloud class notification monitor
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/buptwc --config %h/.config/buptwc/config.toml run
+EnvironmentFile=%h/.config/buptwc/secrets.env
+Restart=on-failure
+# CLI 错误需要处理配置/会话；网络故障已由进程内退避重试。
+RestartPreventExitStatus=1
+RestartSec=30s
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=default.target
