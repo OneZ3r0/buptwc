@@ -88,3 +88,28 @@ func TestInvalidCommandArgumentsDoNotCreateState(t *testing.T) {
 		}
 	}
 }
+
+func TestExplicitInitPathOverridesDefault(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", "invalid-relative-directory")
+	path := filepath.Join(t.TempDir(), "custom", "config.toml")
+	if err := execute(context.Background(), []string{"--config", path, "init"}, os.Stdin, io.Discard, io.Discard); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(path); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestInitRejectsUnusedArguments(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	for _, args := range [][]string{{"init", "extra"}, {"--state-dir", dir, "init"}} {
+		if err := execute(context.Background(), args, os.Stdin, io.Discard, io.Discard); err == nil {
+			t.Fatalf("accepted %v", args)
+		}
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil || len(entries) != 0 {
+		t.Fatalf("unexpected files: %v %v", entries, err)
+	}
+}
