@@ -4,14 +4,33 @@ buptwc 根据 BUPT 强智课表安排 uCloud 通知查询，将新增的“互�
 
 当前提供 Linux 单账号 CLI。程序需要有效的 uCloud 会话、强智导出的课表，以及企业微信群机器人 Webhook。真实 CAS 登录和群消息发送仍需在部署环境验证，自动化测试使用本地模拟服务。
 
-## 构建与配置
+## 安装
 
-从仓库根目录执行，需要 Go 1.25 或更新版本：
+使用 Go 1.25 或更新版本安装：
 
 ```sh
-make build
-cp config.example.toml config.toml
+go install github.com/OneZ3r0/buptwc/cmd/buptwc@latest
 ```
+
+二进制写入 `GOBIN`，未设置时通常为 `~/go/bin`。请将安装目录加入 `PATH`。开发中的版本也可在仓库根目录执行 `go install ./cmd/buptwc` 安装。
+
+当前仓库尚未提供自动发布的预编译下载包。自行构建或收到对应架构的 Linux 二进制后，可以安装到用户目录：
+
+```sh
+install -Dm755 ./buptwc "$HOME/.local/bin/buptwc"
+```
+
+此时将 `~/.local/bin` 加入 `PATH` 即可；运行二进制不需要 Go 环境。
+
+## 初始化与配置
+
+```sh
+buptwc init
+```
+
+默认创建 `~/.config/buptwc/config.toml`；设置了绝对路径 `XDG_CONFIG_HOME` 时，改用 `$XDG_CONFIG_HOME/buptwc/config.toml`。模板随二进制分发，初始化不依赖当前目录或源码仓库。配置文件权限为 `0600`，新建配置目录权限为 `0700`；已有配置不会覆盖。
+
+初始化只创建 TOML，不登录、不创建数据库、不写入 Webhook。第一教学周默认为空，需要按实际校历填写。自定义配置路径时使用 `buptwc --config /path/to/config.toml init`，后续命令也传入同一路径。
 
 编辑 `config.toml`，至少核对以下内容：
 
@@ -22,7 +41,7 @@ cp config.example.toml config.toml
 | `periods` | 从 1 连续编号的节次及起止时间 |
 | `state_dir` | 会话和数据库的存放目录 |
 
-示例中的学期日期不是自动识别结果，节次时间取自仓库课表示例。请按自己的校历和作息核对。时区默认 `Asia/Shanghai`。
+初始化不会推断学期日期，提供的节次时间取自仓库课表示例。请按自己的校历和作息核对。时区默认 `Asia/Shanghai`。
 
 默认在整段课程开始前 10 分钟至结束后 5 分钟查询通知。`window.mode = "period"` 可改为按每小节生成窗口；重叠或相接的窗口会合并。
 
@@ -31,11 +50,11 @@ cp config.example.toml config.toml
 ## 登录、导入与检查
 
 ```sh
-./bin/buptwc login
-./bin/buptwc import /path/to/timetable.xls
-./bin/buptwc courses
-./bin/buptwc plan --days 14
-./bin/buptwc check
+buptwc login
+buptwc import /path/to/timetable.xls
+buptwc courses
+buptwc plan --days 14
+buptwc check
 ```
 
 依次确认：登录成功；课程的周次、星期和节次正确；预览窗口符合课表；`check` 能完整读取通知列表。`plan` 默认从今天开始，也可以指定 `--from YYYY-MM-DD`。
@@ -49,8 +68,8 @@ cp config.example.toml config.toml
 将 Webhook 放入当前进程的 `BUPTWC_WEBHOOK` 环境变量，再执行：
 
 ```sh
-./bin/buptwc notify test
-./bin/buptwc run
+buptwc notify test
+buptwc run
 ```
 
 `notify test` 会向配置的群发送一条真实测试消息。`run` 在监控窗口内查询平台，窗口外等待；已经进入发送队列的任务在窗口外仍会继续处理。
@@ -62,9 +81,9 @@ cp config.example.toml config.toml
 运行期间可在另一个终端使用：
 
 ```sh
-./bin/buptwc status
-./bin/buptwc courses
-./bin/buptwc plan
+buptwc status
+buptwc courses
+buptwc plan
 ```
 
 修改配置、重新登录、导入课表或执行其他需要独占状态目录的命令前，先停止监控进程，完成操作后再启动。
@@ -78,11 +97,12 @@ buptwc [--config FILE] [--state-dir DIR] <command>
 全局选项必须放在命令前，例如：
 
 ```sh
-./bin/buptwc --config /path/to/config.toml plan --days 14
+buptwc --config /path/to/config.toml plan --days 14
 ```
 
 | 命令 | 用途 |
 | --- | --- |
+| `init` | 创建配置文件，拒绝覆盖已有文件 |
 | `login` | 登录并保存会话 |
 | `logout` | 删除会话，保留课表、基线和发送记录 |
 | `import FILE` | 校验并替换课表；失败时保留原课表 |
@@ -93,7 +113,9 @@ buptwc [--config FILE] [--state-dir DIR] <command>
 | `status` | 查看会话、课表及发送任务状态 |
 | `run` | 启动监控并处理发送队列 |
 
-配置中的相对 `state_dir` 相对于配置文件目录解析；命令行 `--state-dir` 相对于当前工作目录解析。所有命令应使用同一套配置和状态目录，否则会看到不同的会话和课表。
+默认配置路径与当前工作目录无关，不会自动读取当前目录下的 `config.toml`。已有本地配置可以继续通过 `--config ./config.toml` 使用。
+
+配置中的相对 `state_dir` 相对于配置文件目录解析；命令行 `--state-dir` 相对于当前工作目录解析。默认状态位于配置目录下的 `state/`，会话和数据库与 TOML 分开存放。`init` 不接受 `--state-dir`，需要自定义时编辑生成配置中的 `state_dir`。所有命令应使用同一套配置和状态目录，否则会看到不同的会话和课表。
 
 ## 支持的课表格式
 
@@ -126,13 +148,14 @@ buptwc [--config FILE] [--state-dir DIR] <command>
 
 ## 使用 systemd 常驻运行
 
-以下步骤使用独立的用户配置目录。首次安装时创建配置，已有配置不覆盖：
+随附服务使用 `~/.local/bin/buptwc` 和 `~/.config/buptwc/config.toml` 的固定路径。以下示例从源码构建后安装；已有配置时跳过初始化。使用其他配置目录时，需要相应调整服务文件中的 `ExecStart` 和 `EnvironmentFile`：
 
 ```sh
+make build
 install -Dm755 bin/buptwc "$HOME/.local/bin/buptwc"
 install -d -m700 "$HOME/.config/buptwc"
 if [ ! -e "$HOME/.config/buptwc/config.toml" ]; then
-    install -m600 config.example.toml "$HOME/.config/buptwc/config.toml"
+    "$HOME/.local/bin/buptwc" --config "$HOME/.config/buptwc/config.toml" init
 fi
 install -Dm644 deploy/buptwc.service "$HOME/.config/systemd/user/buptwc.service"
 umask 077

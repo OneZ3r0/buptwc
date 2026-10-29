@@ -30,7 +30,7 @@ go test ./tests/... -run 'TestCLIExampleImport|TestExampleCourseSemantics'
 | 位置 | 职责 |
 | --- | --- |
 | `cmd/buptwc/` | 命令参数、依赖组装、终端输出和退出码 |
-| `internal/config/` | TOML 解码、默认值及配置校验 |
+| `internal/config/` | 用户配置路径、初始化模板、TOML 解码及配置校验 |
 | `internal/schedule/` | 文件解码、课程解析、日期展开和窗口合并 |
 | `internal/auth/` | CAS 登录、Ticket 交换及会话文件 |
 | `internal/ucloud/` | 通知请求、分页完整性校验及字段匹配 |
@@ -52,8 +52,11 @@ go test ./tests/... -run 'TestCLIExampleImport|TestExampleCourseSemantics'
 | `internal/store/store_test.go` | 事务回滚、去重、账号隔离、重启恢复和并行读取 |
 | `internal/monitor/monitor_test.go` | 运行循环、窗口、退避、取消及会话失效处理 |
 | `internal/auth/auth_test.go` | 模拟 CAS 登录、Ticket 交换及失败响应 |
+| `tests/init_test.go` | 通过 `go install` 安装，在仓库外使用默认路径初始化、导入和查询 |
 | `tests/cli_test.go` | 构建 CLI，导入仓库 XLS，查看课程、预览窗口及失败导入保留旧课表 |
 | `tests/monitor_test.go` | 平台分页、持久化队列、企业微信业务失败与恢复 |
+
+`internal/config/initial.toml` 是嵌入二进制的初始化模板，不包含凭据或预设学期日期。修改模板后检查初始化、权限和重复执行测试；仓库的 `config.example.toml` 则提供包含高级选项的完整示例。
 
 集成测试明确引用 `example/` 中的课表，使用 `tests/testdata/config.toml` 固定日期和节次。当前样本预期为 16 条排课和 133 次课程；这是测试数据的断言，不是对所有课表的限制。增加示例文件不应改变已有测试输入。
 
