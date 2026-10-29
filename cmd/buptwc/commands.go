@@ -422,3 +422,25 @@ func planCommand(ctx context.Context, options commandOptions, rest []string, out
 	}
 	return nil
 }
+
+func initCommand(options commandOptions, args []string, out io.Writer) error {
+	if len(args) != 0 {
+		return permanentError{fmt.Errorf("用法：buptwc [--config FILE] init")}
+	}
+	if options.stateDir != "" {
+		return permanentError{fmt.Errorf("init 不接受 --state-dir；请在生成的配置中设置 state_dir")}
+	}
+	path, err := options.path()
+	if err != nil {
+		return permanentError{err}
+	}
+	path, err = filepath.Abs(path)
+	if err != nil {
+		return permanentError{err}
+	}
+	if err := config.Initialize(path); err != nil {
+		return permanentError{err}
+	}
+	_, err = fmt.Fprintf(out, "已创建配置：%s\n请填写 semester.start_monday 并核对节次时间；随后运行 login、import 和 plan。\nWebhook 通过 BUPTWC_WEBHOOK 环境变量提供。\n", path)
+	return err
+}

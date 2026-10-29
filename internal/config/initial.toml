@@ -1,0 +1,74 @@
+# buptwc 配置。先填写第一教学周的周一，再导入课表。
+# Webhook 使用 BUPTWC_WEBHOOK 环境变量，不要写入本文件。
+timezone = "Asia/Shanghai"
+# 相对于本配置文件目录解析；可改为绝对路径。
+state_dir = "state"
+
+[semester]
+# 必填，格式 YYYY-MM-DD；请按实际校历填写，不是今天的日期。
+start_monday = ""
+weeks = 20
+
+[window]
+mode = "course"
+before = "10m"
+after = "5m"
+
+# 以下为示例节次时间，请按校区和学期作息核对。
+[[periods]]
+number = 1
+start = "08:00"
+end = "08:45"
+[[periods]]
+number = 2
+start = "08:50"
+end = "09:35"
+[[periods]]
+number = 3
+start = "09:50"
+end = "10:35"
+[[periods]]
+number = 4
+start = "10:40"
+end = "11:25"
+[[periods]]
+number = 5
+start = "11:30"
+end = "12:15"
+[[periods]]
+number = 6
+start = "13:00"
+end = "13:45"
+[[periods]]
+number = 7
+start = "13:50"
+end = "14:35"
+[[periods]]
+number = 8
+start = "14:45"
+end = "15:30"
+[[periods]]
+number = 9
+start = "15:40"
+end = "16:25"
+[[periods]]
+number = 10
+start = "16:35"
+end = "17:20"
+[[periods]]
+number = 11
+start = "17:25"
+end = "18:10"
+[[periods]]
+number = 12
+start = "18:30"
+end = "19:15"
+[[periods]]
+number = 13
+start = "19:20"
+end = "20:05"
+[[periods]]
+number = 14
+start = "20:10"
+end = "20:55"
+

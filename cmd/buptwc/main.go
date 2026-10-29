@@ -18,8 +18,9 @@ import (
 
 const usage = `buptwc — 课表驱动的 uCloud 上课提醒
 
-用法：buptwc [--config config.toml] [--state-dir DIR] <命令>
+用法：buptwc [--config FILE] [--state-dir DIR] <命令>
 
+  init                 创建用户配置文件，已有文件不覆盖
   login [--username USER] [--password-stdin | --ticket-stdin]
   logout               仅删除本地会话
   import <file.xls>    校验后原子替换课表
@@ -30,7 +31,8 @@ const usage = `buptwc — 课表驱动的 uCloud 上课提醒
   status               显示会话、课表、基线与发送任务状态
   run                  按课表轮询，并恢复待发送任务
 
-全局选项须放在命令前。配置示例见 config.example.toml。
+默认配置：$XDG_CONFIG_HOME/buptwc/config.toml（通常为 ~/.config/buptwc/config.toml）。
+全局选项须放在命令前；首次使用请运行 buptwc init。
 `
 
 func main() {
@@ -57,7 +59,7 @@ func exitCode(err error) int {
 func execute(ctx context.Context, args []string, in *os.File, out, errOut io.Writer) error {
 	flags := flag.NewFlagSet("buptwc", flag.ContinueOnError)
 	flags.SetOutput(errOut)
-	configPath := flags.String("config", "config.toml", "TOML 配置文件")
+	configPath := flags.String("config", "", "TOML 配置文件（默认使用用户配置目录）")
 	stateDir := flags.String("state-dir", "", "覆盖状态目录")
 	flags.Usage = func() { fmt.Fprint(out, usage) }
 	if err := flags.Parse(args); err != nil {
@@ -74,6 +76,8 @@ func execute(ctx context.Context, args []string, in *os.File, out, errOut io.Wri
 	options := commandOptions{configPath: *configPath, stateDir: *stateDir}
 	rest := args[1:]
 	switch args[0] {
+	case "init":
+		return initCommand(options, rest, out)
 	case "login":
 		return loginCommand(ctx, options, rest, in, out, errOut)
 	case "logout":
@@ -99,8 +103,22 @@ func execute(ctx context.Context, args []string, in *os.File, out, errOut io.Wri
 
 type commandOptions struct{ configPath, stateDir string }
 
+func (o commandOptions) path() (string, error) {
+	if o.configPath != "" {
+		return o.configPath, nil
+	}
+	return config.DefaultPath()
+}
+
 func (o commandOptions) load() (config.Config, error) {
-	c, err := config.Load(o.configPath)
+	path, err := o.path()
+	if err != nil {
+		return config.Config{}, permanentError{err}
+	}
+	c, err := config.Load(path)
+	if os.IsNotExist(err) {
+		return c, permanentError{fmt.Errorf("配置不存在：%s；请运行 buptwc --config %q init: %w", path, path, err)}
+	}
 	if err != nil {
 		return c, permanentError{err}
 	}
