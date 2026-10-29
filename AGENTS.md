@@ -1,1 +1,1 @@
-- Do not edit and modified README.md automatically
+- Do not edit and modify README.md automatically
