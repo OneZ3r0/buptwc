@@ -3,12 +3,13 @@ package main
 import (
 	"context"
 	"errors"
-	"github.com/OneZ3r0/buptwc/internal/auth"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/OneZ3r0/buptwc/internal/auth"
 )
 
 func TestLogoutIgnoresSchedule(t *testing.T) {
@@ -97,6 +98,32 @@ func TestExplicitInitPathOverridesDefault(t *testing.T) {
 	}
 	if _, err := os.Stat(path); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestReadCommandsRejectArgumentsBeforeOpeningStore(t *testing.T) {
+	cfg := filepath.Join("..", "..", "tests", "testdata", "config.toml")
+	for _, tc := range []struct {
+		args []string
+		want string
+	}{
+		{[]string{"courses", "extra"}, "courses 不接受参数"},
+		{[]string{"status", "extra"}, "status 不接受参数"},
+		{[]string{"plan", "extra"}, "plan --days"},
+		{[]string{"plan", "--days", "0"}, "plan --days"},
+		{[]string{"plan", "--from", "invalid"}, "--from 必须"},
+	} {
+		t.Run(strings.Join(tc.args, " "), func(t *testing.T) {
+			statePath := filepath.Join(t.TempDir(), "state")
+			args := append([]string{"--config", cfg, "--state-dir", statePath}, tc.args...)
+			err := execute(context.Background(), args, os.Stdin, io.Discard, io.Discard)
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("got %v, want %q", err, tc.want)
+			}
+			if _, err := os.Stat(statePath); !os.IsNotExist(err) {
+				t.Fatalf("invalid arguments created state: %v", err)
+			}
+		})
 	}
 }
 

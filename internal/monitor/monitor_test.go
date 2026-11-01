@@ -3,22 +3,25 @@ package monitor
 import (
 	"context"
 	"errors"
-	"github.com/OneZ3r0/buptwc/internal/auth"
-	"github.com/OneZ3r0/buptwc/internal/config"
-	"github.com/OneZ3r0/buptwc/internal/schedule"
-	"github.com/OneZ3r0/buptwc/internal/store"
-	"github.com/OneZ3r0/buptwc/internal/ucloud"
 	"path/filepath"
 	"reflect"
 	"sync/atomic"
 	"testing"
 	"testing/synctest"
 	"time"
+
+	"github.com/OneZ3r0/buptwc/internal/auth"
+	"github.com/OneZ3r0/buptwc/internal/config"
+	"github.com/OneZ3r0/buptwc/internal/schedule"
+	"github.com/OneZ3r0/buptwc/internal/store"
+	"github.com/OneZ3r0/buptwc/internal/ucloud"
 )
 
 type scanFunc func(context.Context) ([]ucloud.Notification, error)
 
 func (f scanFunc) Scan(c context.Context) ([]ucloud.Notification, error) { return f(c) }
+func (f scanFunc) NextRefresh() time.Time                                { return time.Time{} }
+func (f scanFunc) Refresh(context.Context) error                         { return nil }
 
 type sendFunc func(context.Context, string) error
 

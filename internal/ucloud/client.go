@@ -2,6 +2,7 @@ package ucloud
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -47,12 +48,23 @@ type Client struct {
 	HTTP                          *http.Client
 	BaseURL                       string
 	Session                       auth.Session
+	SessionPath                   string
 	AccountID, Identity, TenantID string
 	PageSize, MaxPages            int
 	mu                            sync.Mutex
+	refreshRetryAt                time.Time
+	refreshError                  error
+	refreshFailures               int
+	sessionUnsaved                bool
 }
 
 func (c *Client) Account() string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.account()
+}
+
+func (c *Client) account() string {
 	if c.AccountID != "" {
 		return c.AccountID
 	}
@@ -64,6 +76,27 @@ func (c *Client) Account() string {
 func (c *Client) Scan(ctx context.Context) ([]Notification, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	refreshed := false
+	now, at := time.Now(), c.nextRefresh()
+	due := !at.IsZero() && !now.Before(at)
+	if due || !c.Session.Valid(now) && c.Session.RefreshToken != "" {
+		if err := c.refresh(ctx); err != nil {
+			return nil, err
+		}
+		refreshed = true
+	}
+	all, err := c.scan(ctx)
+	if errors.Is(err, auth.ErrSession) && !refreshed && c.Session.RefreshToken != "" {
+		if err := c.refresh(ctx); err != nil {
+			return nil, err
+		}
+		// Start pagination over so an expired token never produces a partial scan.
+		return c.scan(ctx)
+	}
+	return all, err
+}
+
+func (c *Client) scan(ctx context.Context) ([]Notification, error) {
 	if !c.Session.Valid(time.Now()) {
 		return nil, auth.ErrSession
 	}
@@ -79,7 +112,7 @@ func (c *Client) Scan(ctx context.Context) ([]Notification, error) {
 			return nil, fmt.Errorf("无效 uCloud 地址")
 		}
 		q := u.Query()
-		q.Set("newsCopyPersonId", c.Account())
+		q.Set("newsCopyPersonId", c.account())
 		q.Set("current", strconv.Itoa(current))
 		q.Set("size", strconv.Itoa(c.PageSize))
 		u.RawQuery = q.Encode()

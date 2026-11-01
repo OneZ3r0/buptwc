@@ -14,7 +14,7 @@ import (
 	"golang.org/x/net/html/charset"
 )
 
-func Import(path string, c config.Config) (courses []Course, err error) {
+func Import(path string, c config.Config) ([]Course, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
@@ -30,35 +30,23 @@ func Import(path string, c config.Config) (courses []Course, err error) {
 	var grids [][][]string
 	if bytes.HasPrefix(data, []byte{0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1}) {
 		grids, err = biffGrids(data)
-		if err != nil {
-			return nil, err
-		}
 	} else {
 		grids, err = htmlGrids(data)
-		if err != nil {
-			return nil, err
-		}
+	}
+	if err != nil {
+		return nil, err
 	}
 	var match [][]string
 	for _, grid := range grids {
-		found := false
 		for _, row := range grid {
-			days := map[int]bool{}
-			for _, cell := range row {
-				if d := day(cell); d != 0 {
-					days[d] = true
-				}
+			if weekdayColumns(row) == nil {
+				continue
 			}
-			if len(days) == 7 {
-				found = true
-				break
-			}
-		}
-		if found {
 			if match != nil {
 				return nil, fmt.Errorf("存在多个课表，请导出单个学期课表")
 			}
 			match = grid
+			break
 		}
 	}
 	if match == nil {

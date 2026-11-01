@@ -26,10 +26,10 @@ const usage = `buptwc — 课表驱动的 uCloud 上课提醒
   import <file.xls>    校验后原子替换课表
   courses              显示已导入排课
   plan [--from YYYY-MM-DD] [--days 7]
-  check                只读检查会话与完整分页，不建立基线或发送提醒
+  check                检查会话与完整分页，必要时续期；不建立基线或发送提醒
   notify test          向配置的企业微信群发送测试消息
   status               显示会话、课表、基线与发送任务状态
-  run                  按课表轮询，并恢复待发送任务
+  run                  自动续期、按课表轮询，并恢复待发送任务
 
 默认配置：$XDG_CONFIG_HOME/buptwc/config.toml（通常为 ~/.config/buptwc/config.toml）。
 全局选项须放在命令前；首次使用请运行 buptwc init。

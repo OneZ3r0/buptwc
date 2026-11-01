@@ -18,13 +18,12 @@ var courseCodeRE = regexp.MustCompile(`^\([0-9]+\)$`)
 var rowPeriodRE = regexp.MustCompile(`^([0-9]{1,2})\s*\n[0-9]{2}:[0-9]{2}-[0-9]{2}:[0-9]{2}$`)
 var parityRE = regexp.MustCompile(`\(([单双])周\)`)
 var separatorRE = regexp.MustCompile(`^[-=─━]{3,}$`)
+var textReplacer = strings.NewReplacer("\r\n", "\n", "\r", "\n", "（", "(", "）", ")", "【", "[", "】", "]", "，", ",", "～", "-", "—", "-", "－", "-", "\u00a0", " ")
+var weekReplacer = strings.NewReplacer("(周)", "周", "[周]", "周")
 
 func normalize(s string) string {
-	r := strings.NewReplacer("\r\n", "\n", "\r", "\n", "（", "(", "）", ")", "【", "[", "】", "]", "，", ",", "～", "-", "—", "-", "－", "-", "\u00a0", " ")
-	s = r.Replace(s)
-	s = strings.NewReplacer("(周)", "周", "[周]", "周").Replace(s)
-	s = parityRE.ReplaceAllString(s, "周($1)")
-	return s
+	s = weekReplacer.Replace(textReplacer.Replace(s))
+	return parityRE.ReplaceAllString(s, "周($1)")
 }
 
 func ParseWeeks(expr string, max int) ([]int, error) {
@@ -210,21 +209,28 @@ func day(s string) int {
 	return 0
 }
 
-func ParseGrid(rows [][]string, c config.Config) ([]Course, error) {
+// weekdayColumns recognizes candidate tables; ParseGrid rejects duplicate days.
+func weekdayColumns(row []string) map[int]int {
 	columns := map[int]int{}
-	header := -1
-	for r, row := range rows {
-		candidate := map[int]int{}
-		days := map[int]bool{}
-		for col, cell := range row {
-			if d := day(cell); d != 0 {
-				candidate[col] = d
-				days[d] = true
-			}
+	days := map[int]bool{}
+	for col, cell := range row {
+		if d := day(cell); d != 0 {
+			columns[col] = d
+			days[d] = true
 		}
-		if len(days) == 7 && len(candidate) == 7 {
-			columns = candidate
-			header = r
+	}
+	if len(days) != 7 {
+		return nil
+	}
+	return columns
+}
+
+func ParseGrid(rows [][]string, c config.Config) ([]Course, error) {
+	header := -1
+	var columns map[int]int
+	for r, row := range rows {
+		if candidate := weekdayColumns(row); len(candidate) == 7 {
+			header, columns = r, candidate
 			break
 		}
 	}
@@ -266,8 +272,9 @@ func ParseGrid(rows [][]string, c config.Config) ([]Course, error) {
 				a, b = x, y
 			}
 		}
-		for col, d := range columns {
-			if col >= len(row) || strings.TrimSpace(row[col]) == "" {
+		for col := firstDay; col < len(row); col++ {
+			d := columns[col]
+			if d == 0 || strings.TrimSpace(row[col]) == "" {
 				continue
 			}
 			courses, err := ParseCell(row[col], d, a, b, c.Semester.Weeks)

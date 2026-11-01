@@ -97,12 +97,15 @@ func TestImportHTML(t *testing.T) {
 
 func TestImportRejectsInvalidFiles(t *testing.T) {
 	for name, data := range map[string][]byte{
-		"empty":               nil,
-		"corrupt BIFF":        {0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1},
-		"multiple timetables": []byte(htmlTimetable + htmlTimetable),
-		"invalid weeks":       []byte(strings.ReplaceAll(htmlTimetable, "1-4(单周)", "0-4(单周)")),
-		"invalid periods":     []byte(strings.ReplaceAll(htmlTimetable, "[01-02节]", "[00-02节]")),
-		"invalid cell":        []byte(strings.ReplaceAll(htmlTimetable, "网络<br>甲老师<br>1-4(单周)[01-02节]<br>教一101", "未识别课程")),
+		"empty":                  nil,
+		"corrupt BIFF":           {0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1},
+		"multiple timetables":    []byte(htmlTimetable + htmlTimetable),
+		"duplicate weekday":      []byte(strings.Replace(htmlTimetable, "<th>星期日</th>", "<th>星期日</th><th>星期一</th>", 1)),
+		"ambiguous second table": []byte(htmlTimetable + strings.Replace(htmlTimetable, "<th>星期日</th>", "<th>星期日</th><th>星期一</th>", 1)),
+		"missing weekday":        []byte(strings.Replace(htmlTimetable, "<th>星期日</th>", "", 1)),
+		"invalid weeks":          []byte(strings.ReplaceAll(htmlTimetable, "1-4(单周)", "0-4(单周)")),
+		"invalid periods":        []byte(strings.ReplaceAll(htmlTimetable, "[01-02节]", "[00-02节]")),
+		"invalid cell":           []byte(strings.ReplaceAll(htmlTimetable, "网络<br>甲老师<br>1-4(单周)[01-02节]<br>教一101", "未识别课程")),
 	} {
 		t.Run(name, func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "bad.xls")

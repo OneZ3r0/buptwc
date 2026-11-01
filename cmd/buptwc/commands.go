@@ -5,6 +5,14 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"io"
+	"log/slog"
+	"os"
+	"path/filepath"
+	"strings"
+	"text/tabwriter"
+	"time"
+
 	"github.com/OneZ3r0/buptwc/internal/auth"
 	"github.com/OneZ3r0/buptwc/internal/config"
 	"github.com/OneZ3r0/buptwc/internal/monitor"
@@ -15,13 +23,6 @@ import (
 	"github.com/OneZ3r0/buptwc/internal/store"
 	"github.com/OneZ3r0/buptwc/internal/ucloud"
 	"golang.org/x/term"
-	"io"
-	"log/slog"
-	"os"
-	"path/filepath"
-	"strings"
-	"text/tabwriter"
-	"time"
 )
 
 func platform(c config.Config, path string) (*ucloud.Client, error) {
@@ -29,7 +30,7 @@ func platform(c config.Config, path string) (*ucloud.Client, error) {
 	if err != nil {
 		return nil, permanentError{fmt.Errorf("无法读取会话，请先运行 buptwc login: %w", err)}
 	}
-	return &ucloud.Client{HTTP: netutil.Client(c.Poll.Timeout.Value()), BaseURL: auth.APIBase, Session: s, AccountID: c.UCloud.AccountID, Identity: c.UCloud.Identity, TenantID: c.UCloud.TenantID, PageSize: c.Poll.PageSize, MaxPages: c.Poll.MaxPages}, nil
+	return &ucloud.Client{HTTP: netutil.Client(c.Poll.Timeout.Value()), BaseURL: auth.APIBase, Session: s, SessionPath: path, AccountID: c.UCloud.AccountID, Identity: c.UCloud.Identity, TenantID: c.UCloud.TenantID, PageSize: c.Poll.PageSize, MaxPages: c.Poll.MaxPages}, nil
 }
 
 func login(ctx context.Context, c config.Config, path string, args []string, in *os.File, out, errOut io.Writer) error {
@@ -100,6 +101,11 @@ func login(ctx context.Context, c config.Config, path string, args []string, in 
 	}
 	loc, _ := time.LoadLocation(c.Timezone)
 	fmt.Fprintf(out, "登录成功，user_id=%s；会话有效至 %s。\n", s.UserID, s.ExpiresAt.In(loc).Format(time.RFC3339))
+	if s.RefreshToken != "" {
+		fmt.Fprintf(out, "运行 buptwc run 后自动续期；下次续期时间：%s。\n", s.RefreshAt().In(loc).Format(time.RFC3339))
+	} else {
+		fmt.Fprintln(out, "平台未返回 refresh token，此会话无法自动续期。")
+	}
 	return nil
 }
 
@@ -244,7 +250,6 @@ func importCommand(ctx context.Context, options commandOptions, rest []string, o
 	}
 	fmt.Fprintf(out, "已导入 %d 条排课，展开并合并为 %d 个监控窗口。\n", len(courses), len(windows))
 	return nil
-
 }
 
 func runCommand(ctx context.Context, options commandOptions, rest []string, errOut io.Writer) error {
@@ -255,13 +260,7 @@ func runCommand(ctx context.Context, options commandOptions, rest []string, errO
 	if err != nil {
 		return err
 	}
-	if err := c.ValidateSchedule(); err != nil {
-		return permanentError{err}
-	}
-	if err := c.ValidatePoll(); err != nil {
-		return permanentError{err}
-	}
-	if err := c.ValidateNotify(); err != nil {
+	if err := c.Validate(); err != nil {
 		return permanentError{err}
 	}
 	lock, err := state.Acquire(c.StateDir)
@@ -294,16 +293,24 @@ func runCommand(ctx context.Context, options commandOptions, rest []string, errO
 	}
 	logger := slog.New(slog.NewTextHandler(errOut, nil))
 	logger.Info("开始监控", "windows", len(windows), "session_expires", client.Session.ExpiresAt)
+	if at := client.NextRefresh(); !at.IsZero() {
+		logger.Info("自动续期已启用", "next_refresh", at)
+	} else {
+		logger.Warn("会话缺少 refresh token，请停止监控后重新登录以启用自动续期")
+	}
 	if w, ok := schedule.Next(windows, time.Now()); ok {
 		logger.Info("当前或下一监控窗口", "start", w.Start, "end", w.End)
 	} else {
-		logger.Warn("没有后续监控窗口，仅处理待发送任务")
+		logger.Warn("没有后续监控窗口，继续维护会话并处理待发送任务")
 	}
 	r := monitor.Runner{Config: c, Store: db, Scanner: client, Sender: sender, Account: client.Account(), Windows: windows, Log: logger}
 	return r.Run(ctx)
 }
 
 func coursesCommand(ctx context.Context, options commandOptions, rest []string, out io.Writer) error {
+	if len(rest) != 0 {
+		return fmt.Errorf("courses 不接受参数")
+	}
 	c, err := options.load()
 	if err != nil {
 		return err
@@ -313,9 +320,6 @@ func coursesCommand(ctx context.Context, options commandOptions, rest []string, 
 		return err
 	}
 	defer db.Close()
-	if len(rest) != 0 {
-		return fmt.Errorf("courses 不接受参数")
-	}
 	courses, err := db.Courses(ctx)
 	if err != nil {
 		return err
@@ -329,6 +333,9 @@ func coursesCommand(ctx context.Context, options commandOptions, rest []string, 
 }
 
 func statusCommand(ctx context.Context, options commandOptions, rest []string, out io.Writer) error {
+	if len(rest) != 0 {
+		return fmt.Errorf("status 不接受参数")
+	}
 	c, err := options.load()
 	if err != nil {
 		return err
@@ -342,9 +349,6 @@ func statusCommand(ctx context.Context, options commandOptions, rest []string, o
 	}
 	defer db.Close()
 	sessionPath := filepath.Join(c.StateDir, "session.json")
-	if len(rest) != 0 {
-		return fmt.Errorf("status 不接受参数")
-	}
 	courses, courseErr := db.Courses(ctx)
 	if courseErr != nil {
 		fmt.Fprintln(out, "课表：", courseErr)
@@ -362,6 +366,11 @@ func statusCommand(ctx context.Context, options commandOptions, rest []string, o
 	}
 	loc, _ := time.LoadLocation(c.Timezone)
 	fmt.Fprintf(out, "会话有效：%t；过期时间：%s；account_id=%s\n", s.Valid(time.Now()), s.ExpiresAt.In(loc).Format(time.RFC3339), account)
+	if s.RefreshToken != "" {
+		fmt.Fprintf(out, "自动续期：可用（需保持 run 运行）；计划续期：%s\n", s.RefreshAt().In(loc).Format(time.RFC3339))
+	} else {
+		fmt.Fprintln(out, "自动续期：不可用；请重新登录以获取 refresh token")
+	}
 	st, err := db.Status(ctx, account)
 	if err != nil {
 		return err
@@ -381,11 +390,6 @@ func planCommand(ctx context.Context, options commandOptions, rest []string, out
 	if err := c.ValidateSchedule(); err != nil {
 		return permanentError{err}
 	}
-	db, err := store.Open(filepath.Join(c.StateDir, "buptwc.db"))
-	if err != nil {
-		return err
-	}
-	defer db.Close()
 	loc, _ := time.LoadLocation(c.Timezone)
 	f := flag.NewFlagSet("plan", flag.ContinueOnError)
 	f.SetOutput(errOut)
@@ -402,6 +406,11 @@ func planCommand(ctx context.Context, options commandOptions, rest []string, out
 		return fmt.Errorf("--from 必须为 YYYY-MM-DD")
 	}
 	end := start.AddDate(0, 0, *days)
+	db, err := store.Open(filepath.Join(c.StateDir, "buptwc.db"))
+	if err != nil {
+		return err
+	}
+	defer db.Close()
 	courses, err := db.Courses(ctx)
 	if err != nil {
 		return err

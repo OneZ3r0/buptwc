@@ -15,8 +15,11 @@ import (
 	"github.com/OneZ3r0/buptwc/internal/ucloud"
 )
 
+// Scanner owns notification reads and renewal of the session they use.
 type Scanner interface {
 	Scan(context.Context) ([]ucloud.Notification, error)
+	NextRefresh() time.Time
+	Refresh(context.Context) error
 }
 type Sender interface {
 	Send(context.Context, string) error
@@ -138,6 +141,23 @@ func (r *Runner) Run(ctx context.Context) error {
 			return err
 		}
 		now := time.Now()
+		if at := r.Scanner.NextRefresh(); !authFailed && !at.IsZero() && !now.Before(at) {
+			refreshCtx, cancel := context.WithTimeout(ctx, r.Config.Poll.Timeout.Value())
+			err := r.Scanner.Refresh(refreshCtx)
+			cancel()
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+			if errors.Is(err, auth.ErrSession) {
+				authFailed = true
+				r.logger().Error("会话无法续期；停止轮询，继续处理待发送任务", "error", err)
+			} else if err != nil {
+				r.logger().Warn("会话续期失败，稍后重试", "error", err, "retry_at", r.Scanner.NextRefresh())
+			} else {
+				r.logger().Info("会话已自动续期", "next_refresh", r.Scanner.NextRefresh())
+			}
+			now = time.Now()
+		}
 		w, hasWindow := schedule.Next(r.Windows, now)
 		active := hasWindow && !now.Before(w.Start)
 		if !authFailed && active && !now.Before(nextPoll) {
@@ -181,6 +201,9 @@ func (r *Runner) Run(ctx context.Context) error {
 			if !hasJob || pollAt.Before(wake) {
 				wake = pollAt
 			}
+		}
+		if at := r.Scanner.NextRefresh(); !authFailed && !at.IsZero() && (wake.IsZero() || at.Before(wake)) {
+			wake = at
 		}
 		if wake.IsZero() {
 			<-ctx.Done()

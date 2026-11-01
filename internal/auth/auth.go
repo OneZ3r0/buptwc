@@ -28,13 +28,31 @@ const Authorization = "Basic cG9ydGFsOnBvcnRhbF9zZWNyZXQ="
 var ErrSession = errors.New("uCloud 会话已失效，请运行 buptwc login 重新登录")
 
 type Session struct {
-	AccessToken string    `json:"access_token"`
-	UserID      string    `json:"user_id"`
-	ExpiresAt   time.Time `json:"expires_at"`
+	AccessToken  string    `json:"access_token"`
+	RefreshToken string    `json:"refresh_token,omitempty"`
+	UserID       string    `json:"user_id"`
+	IssuedAt     time.Time `json:"issued_at,omitempty"`
+	ExpiresAt    time.Time `json:"expires_at"`
 }
 
 func (s Session) Valid(now time.Time) bool {
 	return s.AccessToken != "" && s.UserID != "" && now.Before(s.ExpiresAt)
+}
+
+// RefreshAt caps the interval at two hours, leaving time to retry before expiry.
+func (s Session) RefreshAt() time.Time {
+	if s.RefreshToken == "" {
+		return time.Time{}
+	}
+	if s.IssuedAt.IsZero() {
+		return s.ExpiresAt.Add(-5 * time.Minute)
+	}
+	margin := min(5*time.Minute, s.ExpiresAt.Sub(s.IssuedAt)/10)
+	at := s.ExpiresAt.Add(-margin)
+	if limit := s.IssuedAt.Add(2 * time.Hour); limit.Before(at) {
+		at = limit
+	}
+	return at
 }
 
 func Save(path string, s Session) error {
@@ -156,6 +174,20 @@ func (c *Client) Exchange(ctx context.Context, ticket string) (Session, error) {
 		return Session{}, fmt.Errorf("Ticket 不能为空")
 	}
 	form := url.Values{"grant_type": {"third"}, "ticket": {ticket}}
+	return c.token(ctx, form, Session{})
+}
+
+func (c *Client) Refresh(ctx context.Context, current Session) (Session, error) {
+	if current.RefreshToken == "" {
+		return Session{}, ErrSession
+	}
+	form := url.Values{"grant_type": {"refresh_token"}, "refresh_token": {current.RefreshToken}}
+	return c.token(ctx, form, current)
+}
+
+func (c *Client) token(ctx context.Context, form url.Values, current Session) (Session, error) {
+	refresh := form.Get("grant_type") == "refresh_token"
+	started := time.Now()
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.APIBase+"/ykt-basics/oauth/token", strings.NewReader(form.Encode()))
 	if err != nil {
 		return Session{}, fmt.Errorf("无效 Token 地址")
@@ -169,27 +201,45 @@ func (c *Client) Exchange(ctx context.Context, ticket string) (Session, error) {
 		return Session{}, err
 	}
 	defer res.Body.Close()
-	if res.StatusCode != http.StatusOK {
+	if refresh && (res.StatusCode == http.StatusUnauthorized || res.StatusCode == http.StatusForbidden) {
+		return Session{}, ErrSession
+	}
+	// OAuth invalid_grant is commonly returned with HTTP 400, not HTTP 200.
+	if res.StatusCode != http.StatusOK && !(refresh && res.StatusCode == http.StatusBadRequest) {
 		return Session{}, fmt.Errorf("Token 交换 HTTP %d", res.StatusCode)
 	}
 	var data struct {
-		AccessToken string     `json:"access_token"`
-		UserID      netutil.ID `json:"user_id"`
-		ExpiresIn   netutil.ID `json:"expires_in"`
-		Code        *int       `json:"code"`
-		Success     *bool      `json:"success"`
-		Error       string     `json:"error"`
+		AccessToken  string     `json:"access_token"`
+		RefreshToken string     `json:"refresh_token"`
+		UserID       netutil.ID `json:"user_id"`
+		ExpiresIn    netutil.ID `json:"expires_in"`
+		Code         *int       `json:"code"`
+		Success      *bool      `json:"success"`
+		Error        string     `json:"error"`
 	}
 	if err := netutil.JSON(res.Body, &data); err != nil {
 		return Session{}, err
 	}
-	if data.Error != "" || data.Code != nil && *data.Code != 200 && *data.Code != 0 || data.Success != nil && !*data.Success || data.AccessToken == "" || data.UserID == "" {
+	if refresh && (data.Error == "invalid_grant" || data.Error == "invalid_token" || data.Code != nil && (*data.Code == 401 || *data.Code == 403)) {
+		return Session{}, ErrSession
+	}
+	if refresh {
+		if data.UserID == "" {
+			data.UserID = netutil.ID(current.UserID)
+		} else if string(data.UserID) != current.UserID {
+			return Session{}, fmt.Errorf("续期返回了不同账号: %w", ErrSession)
+		}
+		if data.RefreshToken == "" {
+			data.RefreshToken = current.RefreshToken
+		}
+	}
+	if res.StatusCode != http.StatusOK || data.Error != "" || data.Code != nil && *data.Code != 200 && *data.Code != 0 || data.Success != nil && !*data.Success || data.AccessToken == "" || data.UserID == "" {
 		return Session{}, fmt.Errorf("Token 交换失败或响应缺少会话字段")
 	}
 	now := time.Now()
 	var expiry time.Time
 	if seconds, err := strconv.ParseInt(string(data.ExpiresIn), 10, 64); err == nil && seconds > 0 && seconds <= 365*86400 {
-		expiry = now.Add(time.Duration(seconds) * time.Second)
+		expiry = started.Add(time.Duration(seconds) * time.Second)
 	}
 	// The unverified JWT payload is only an expiry hint; it is never used to authenticate.
 	parts := strings.Split(data.AccessToken, ".")
@@ -206,7 +256,7 @@ func (c *Client) Exchange(ctx context.Context, ticket string) (Session, error) {
 			}
 		}
 	}
-	s := Session{data.AccessToken, string(data.UserID), expiry}
+	s := Session{AccessToken: data.AccessToken, RefreshToken: data.RefreshToken, UserID: string(data.UserID), IssuedAt: started, ExpiresAt: expiry}
 	if !s.Valid(now) {
 		return Session{}, fmt.Errorf("Token 缺少有效的过期时间，请重新登录")
 	}
