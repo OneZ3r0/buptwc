@@ -13,6 +13,7 @@ weeks = 20
 mode = "period"
 before = "10m"
 after = "5m"
+end_before = "8m" # 末节结束前的窗口；紧接下一节的课间已被开始窗口覆盖时跳过；0m 关闭
 
 # 以下为示例节次时间，请按校区和学期作息核对。
 [[periods]]

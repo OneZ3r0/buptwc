@@ -47,9 +47,10 @@ type Config struct {
 	Periods     []Period     `toml:"periods"`
 	Adjustments []Adjustment `toml:"adjustments"`
 	Window      struct {
-		Mode   string   `toml:"mode"`
-		Before Duration `toml:"before"`
-		After  Duration `toml:"after"`
+		Mode      string   `toml:"mode"`
+		Before    Duration `toml:"before"`
+		After     Duration `toml:"after"`
+		EndBefore Duration `toml:"end_before"`
 	} `toml:"window"`
 	Poll struct {
 		Interval   Duration `toml:"interval"`
@@ -81,6 +82,7 @@ func Defaults() Config {
 	c.Window.Mode = "period"
 	c.Window.Before = Duration(10 * time.Minute)
 	c.Window.After = Duration(5 * time.Minute)
+	c.Window.EndBefore = Duration(8 * time.Minute)
 	c.Poll.Interval = Duration(5 * time.Second)
 	c.Poll.PageSize = 10
 	c.Poll.MaxPages = 100
@@ -145,8 +147,10 @@ func (c Config) ValidateSchedule() error {
 	if c.Window.Mode != "course" && c.Window.Mode != "period" {
 		return fmt.Errorf("window.mode 必须为 course 或 period")
 	}
-	if c.Window.Before < 0 || c.Window.After < 0 || c.Window.Before.Value() > 24*time.Hour || c.Window.After.Value() > 24*time.Hour {
-		return fmt.Errorf("窗口偏移必须在 0..24h 之间")
+	for _, offset := range []Duration{c.Window.Before, c.Window.After, c.Window.EndBefore} {
+		if offset < 0 || offset.Value() > 24*time.Hour {
+			return fmt.Errorf("窗口偏移必须在 0..24h 之间")
+		}
 	}
 	for i, a := range c.Adjustments {
 		if _, err := time.ParseInLocation("2006-01-02", a.Date, loc); err != nil {

@@ -8,9 +8,10 @@ start_monday = "2026-09-07"
 weeks = 20
 
 [window]
-mode = "period" # period：每小节开始时建立窗口；course：只在整段课程首节开始时建立窗口
+mode = "period" # 开始窗口：period 按每小节；course 只按整段课程首节
 before = "10m"
 after = "5m"
+end_before = "8m" # 末节结束前的窗口；紧接下一节的课间已被开始窗口覆盖时跳过；0m 关闭
 
 # 高级配置：以下均有默认值，需要覆盖时再取消对应配置节的注释。
 # [poll]

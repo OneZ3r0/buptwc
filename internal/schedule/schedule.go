@@ -98,6 +98,7 @@ func Windows(courses []Course, c config.Config) ([]Window, error) {
 		return nil, err
 	}
 	var windows []Window
+	starts := make(map[time.Time]bool)
 	at := func(d time.Time, hhmm string) time.Time {
 		t, _ := time.Parse("15:04", hhmm)
 		return time.Date(d.Year(), d.Month(), d.Day(), t.Hour(), t.Minute(), 0, 0, d.Location())
@@ -109,7 +110,22 @@ func Windows(courses []Course, c config.Config) ([]Window, error) {
 		}
 		for p := first; p <= last; p++ {
 			start := at(o.Date, c.Periods[p-1].Start)
+			starts[start] = true
 			windows = append(windows, Window{start.Add(-c.Window.Before.Value()), start.Add(c.Window.After.Value())})
+		}
+	}
+	if c.Window.EndBefore > 0 {
+		for _, o := range occurrences {
+			last := o.Course.EndPeriod
+			end := at(o.Date, c.Periods[last-1].End)
+			if last < len(c.Periods) {
+				next := at(o.Date, c.Periods[last].Start)
+				// The next class's start window already covers this break.
+				if starts[next] && next.Sub(end) <= c.Window.Before.Value() {
+					continue
+				}
+			}
+			windows = append(windows, Window{end.Add(-c.Window.EndBefore.Value()), end})
 		}
 	}
 	return Merge(windows), nil
