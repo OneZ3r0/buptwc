@@ -8,13 +8,13 @@ start_monday = "2026-09-07"
 weeks = 20
 
 [window]
-mode = "course" # course：整段课程；period：每小节分别建立窗口
+mode = "period" # period：每小节开始时建立窗口；course：只在整段课程首节开始时建立窗口
 before = "10m"
 after = "5m"
 
 # 高级配置：以下均有默认值，需要覆盖时再取消对应配置节的注释。
 # [poll]
-# interval = "10s"
+# interval = "5s"
 # page_size = 10
 # max_pages = 100
 # timeout = "15s"

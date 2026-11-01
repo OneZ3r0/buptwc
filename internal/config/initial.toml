@@ -10,7 +10,7 @@ start_monday = ""
 weeks = 20
 
 [window]
-mode = "course"
+mode = "period"
 before = "10m"
 after = "5m"
 

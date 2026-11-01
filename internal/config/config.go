@@ -78,10 +78,10 @@ func Defaults() Config {
 	c.Timezone = "Asia/Shanghai"
 	c.StateDir = "state"
 	c.Semester.Weeks = 20
-	c.Window.Mode = "course"
+	c.Window.Mode = "period"
 	c.Window.Before = Duration(10 * time.Minute)
 	c.Window.After = Duration(5 * time.Minute)
-	c.Poll.Interval = Duration(10 * time.Second)
+	c.Poll.Interval = Duration(5 * time.Second)
 	c.Poll.PageSize = 10
 	c.Poll.MaxPages = 100
 	c.Poll.Timeout = Duration(15 * time.Second)

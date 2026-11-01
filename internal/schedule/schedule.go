@@ -104,15 +104,12 @@ func Windows(courses []Course, c config.Config) ([]Window, error) {
 	}
 	for _, o := range occurrences {
 		first, last := o.Course.StartPeriod, o.Course.EndPeriod
+		if c.Window.Mode == "course" {
+			last = first
+		}
 		for p := first; p <= last; p++ {
-			end := p
-			if c.Window.Mode == "course" {
-				end = last
-			}
-			windows = append(windows, Window{at(o.Date, c.Periods[p-1].Start).Add(-c.Window.Before.Value()), at(o.Date, c.Periods[end-1].End).Add(c.Window.After.Value())})
-			if c.Window.Mode == "course" {
-				break
-			}
+			start := at(o.Date, c.Periods[p-1].Start)
+			windows = append(windows, Window{start.Add(-c.Window.Before.Value()), start.Add(c.Window.After.Value())})
 		}
 	}
 	return Merge(windows), nil

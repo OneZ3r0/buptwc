@@ -8,12 +8,12 @@ start_monday = "2026-09-07"
 weeks = 20
 
 [window]
-mode = "course" # course：整段课程；period：每小节分别建立窗口
+mode = "course" # course：首节开始窗口；period：每小节开始窗口
 before = "10m"
 after = "5m"
 
 [poll]
-interval = "10s"
+interval = "5s"
 page_size = 10
 max_pages = 100
 timeout = "15s"
