@@ -25,7 +25,8 @@ func TestWeComResponseAndTextLimit(t *testing.T) {
 				var body struct {
 					MsgType string `json:"msgtype"`
 					Text    struct {
-						Content string `json:"content"`
+						Content       string   `json:"content"`
+						MentionedList []string `json:"mentioned_list"`
 					} `json:"text"`
 				}
 				if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
@@ -33,6 +34,9 @@ func TestWeComResponseAndTextLimit(t *testing.T) {
 				}
 				if body.MsgType != "text" || len(body.Text.Content) > 2048 || !utf8.ValidString(body.Text.Content) || !strings.HasSuffix(body.Text.Content, "…") {
 					t.Error("invalid/truncated message")
+				}
+				if !strings.HasPrefix(body.Text.Content, "@所有人\n") || len(body.Text.MentionedList) != 1 || body.Text.MentionedList[0] != "@all" {
+					t.Error("message must mention everyone")
 				}
 				w.Write([]byte(tc.body))
 			}))

@@ -30,14 +30,16 @@ func New(webhook string, timeout time.Duration) (*Sender, error) {
 }
 
 func (s *Sender) Send(ctx context.Context, message string) error {
-	message = truncate(message, 2048)
+	message = truncate("@所有人\n"+message, 2048)
 	payload := struct {
 		MsgType string `json:"msgtype"`
 		Text    struct {
-			Content string `json:"content"`
+			Content       string   `json:"content"`
+			MentionedList []string `json:"mentioned_list"`
 		} `json:"text"`
 	}{MsgType: "text"}
 	payload.Text.Content = message
+	payload.Text.MentionedList = []string{"@all"}
 	b, err := json.Marshal(payload)
 	if err != nil {
 		return err
